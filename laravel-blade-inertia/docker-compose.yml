@@ -1,0 +1,82 @@
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    volumes:
+      - ./:/var/www:cached
+      - laravel_storage:/var/www/storage
+      - laravel_cache:/var/www/bootstrap/cache
+    networks:
+      - laravel
+    depends_on:
+      - database
+      - redis
+    environment:
+      # Ensure Laravel uses correct hostnames inside Docker
+      DB_HOST: database
+      REDIS_HOST: redis
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    volumes:
+      - ./:/var/www:cached
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - laravel
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    command: php artisan queue:work --verbose --tries=3
+    volumes:
+      - ./:/var/www:cached
+      - laravel_storage:/var/www/storage
+      - laravel_cache:/var/www/bootstrap/cache
+    depends_on:
+      - database
+      - redis
+    networks:
+      - laravel
+    restart: unless-stopped
+
+  database:
+    image: mysql:8
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: laravel
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: password
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - laravel
+    restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - laravel
+    restart: unless-stopped
+
+networks:
+  laravel:
+
+volumes:
+  db-data:
+  redis-data:
+  laravel_storage:
+  laravel_cache:
